@@ -1,24 +1,21 @@
 import argparse
 import os
 from PIL import Image
+from min_dalle import MinDalle
 
-from min_dalle.min_dalle_torch import MinDalleTorch
-from min_dalle.min_dalle_flax import MinDalleFlax
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--mega', action='store_true')
 parser.add_argument('--no-mega', dest='mega', action='store_false')
 parser.set_defaults(mega=False)
-parser.add_argument('--torch', action='store_true')
-parser.add_argument('--no-torch', dest='torch', action='store_false')
-parser.set_defaults(torch=False)
-parser.add_argument('--text', type=str, default='alien life')
-parser.add_argument('--seed', type=int, default=7)
-parser.add_argument('--image_path', type=str, default='generated')
-parser.add_argument('--token_count', type=int, default=256) # for debugging
+parser.add_argument('--text', type=str, default='Dali painting of WALL·E')
+parser.add_argument('--seed', type=int, default=-1)
+parser.add_argument('--grid-size', type=int, default=1)
+parser.add_argument('--image-path', type=str, default='generated')
+parser.add_argument('--models-root', type=str, default='pretrained')
 
 
-def ascii_from_image(image: Image.Image, size: int) -> str:
+def ascii_from_image(image: Image.Image, size: int = 128) -> str:
     rgb_pixels = image.resize((size, int(0.55 * size))).convert('L').getdata()
     chars = list('.,;/IOX')
     chars = [chars[i * len(chars) // 256] for i in rgb_pixels]
@@ -28,37 +25,30 @@ def ascii_from_image(image: Image.Image, size: int) -> str:
 
 def save_image(image: Image.Image, path: str):
     if os.path.isdir(path):
-        path = os.path.join(path, 'generated.png')
-    elif not path.endswith('.png'):
-        path += '.png'
+        path = os.path.join(path, 'generated.jpg')
+    elif not path.endswith('.jpg'):
+        path += '.jpg'
     print("saving image to", path)
     image.save(path)
     return image
 
 
 def generate_image(
-    is_torch: bool,
     is_mega: bool,
     text: str,
     seed: int,
+    grid_size: int,
     image_path: str,
-    token_count: int
+    models_root: str
 ):
-    is_reusable = False
-    if is_torch:
-        image_generator = MinDalleTorch(is_mega, is_reusable, token_count)
+    model = MinDalle(
+        is_mega=is_mega, 
+        models_root=models_root,
+        is_reusable=False,
+        is_verbose=True
+    )
 
-        if token_count < image_generator.config['image_length']:
-            image_tokens = image_generator.generate_image_tokens(text, seed)
-            print('image tokens', list(image_tokens.to('cpu').detach().numpy()))
-            return
-        else:
-            image = image_generator.generate_image(text, seed)
-
-    else:
-        image_generator = MinDalleFlax(is_mega, is_reusable)
-        image = image_generator.generate_image(text, seed)
-
+    image = model.generate_image(text, seed, grid_size, is_verbose=True)
     save_image(image, image_path)
     print(ascii_from_image(image, size=128))
 
@@ -67,10 +57,10 @@ if __name__ == '__main__':
     args = parser.parse_args()
     print(args)
     generate_image(
-        is_torch=args.torch,
         is_mega=args.mega,
         text=args.text,
         seed=args.seed,
+        grid_size=args.grid_size,
         image_path=args.image_path,
-        token_count=args.token_count
+        models_root=args.models_root
     )

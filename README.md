@@ -1,39 +1,83 @@
 # min(DALL·E)
 
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/kuprel/min-dalle/blob/main/min_dalle.ipynb) &nbsp;
+[![Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/kuprel/min-dalle/blob/main/min_dalle.ipynb)
+&nbsp;
 [![Replicate](https://replicate.com/kuprel/min-dalle/badge)](https://replicate.com/kuprel/min-dalle)
+&nbsp;
+[![Discord](https://img.shields.io/discord/823813159592001537?color=5865F2&logo=discord&logoColor=white)](https://discord.com/channels/823813159592001537/912729332311556136)
 
-This is a minimal implementation of Boris Dayma's [DALL·E Mini](https://github.com/borisdayma/dalle-mini).  It has been stripped to the bare essentials necessary for doing inference, and converted to PyTorch.  To run the torch model, the only third party dependencies are numpy and torch.  Flax is used to convert the weights (which are saved the first time the model is loaded), and wandb is only used to download the models.
+This is a fast, minimal port of Boris Dayma's [DALL·E Mega](https://github.com/borisdayma/dalle-mini).  It has been stripped down for inference and converted to PyTorch.  The only third party dependencies are numpy, requests, pillow and torch.
 
-It currently takes **7.4 seconds** to generate an image with DALL·E Mega with PyTorch on a standard GPU runtime in Colab
+To generate a 4x4 grid of DALL·E Mega images it takes:
+- 89 sec with a T4 in Colab
+- 48 sec with a P100 in Colab
+- 14 sec with an A100 on Replicate
+- TBD with an H100 (@NVIDIA?)
 
-### Setup
+The flax model and code for converting it to torch can be found [here](https://github.com/kuprel/min-dalle-flax).
 
-Run `sh setup.sh` to install dependencies and download pretrained models.  The models can also be downloaded manually here: 
-[VQGan](https://huggingface.co/dalle-mini/vqgan_imagenet_f16_16384), 
-[DALL·E Mini](https://wandb.ai/dalle-mini/dalle-mini/artifacts/DalleBart_model/mini-1/v0/files), 
-[DALL·E Mega](https://wandb.ai/dalle-mini/dalle-mini/artifacts/DalleBart_model/mega-1-fp16/v14/files)
+## Install
 
-### Usage
+```bash
+$ pip install min-dalle
+```  
 
-Use the python script `image_from_text.py` to generate images from the command line.  Note: the command line script loads the models and parameters each time.  To load a model once and generate multiple times, initialize either `MinDalleTorch` or `MinDalleFlax`, then call `generate_image` with some text and a seed.  See the colab for an example.
+## Usage
 
-### Examples
+Load the model parameters once and reuse the model to generate multiple images.
 
+```python
+from min_dalle import MinDalle
+
+model = MinDalle(
+    is_mega=True, 
+    is_reusable=True,
+    models_root='./pretrained'
+)
 ```
-python image_from_text.py --text='artificial intelligence' --torch
-```
-![Alien](examples/artificial_intelligence.png)
 
+The required models will be downloaded to `models_root` if they are not already there.  Once everything has finished initializing, call `generate_image` with some text as many times as you want.  Use a positive `seed` for reproducible results.  Higher values for `log2_supercondition_factor` result in better agreement with the text but a narrower variety of generated images.  Every image token is sampled from the top $k$ most probable tokens.
 
-```
-python image_from_text.py --text='a comfy chair that looks like an avocado' --torch --mega --seed=10
-```
-![Avocado Armchair](examples/avocado_armchair.png)
+```python
+image = model.generate_image(
+    text='Nuclear explosion broccoli',
+    seed=-1,
+    grid_size=4,
+    log2_k=6,
+    log2_supercondition_factor=5,
+    is_verbose=False
+)
 
-
+display(image)
 ```
-python image_from_text.py --text='court sketch of godzilla on trial' --torch --mega --seed=40
-```
+<img src="https://github.com/kuprel/min-dalle/raw/main/examples/nuclear_broccoli.jpg" alt="min-dalle" width="400"/>
+credit: https://twitter.com/hardmaru/status/1544354119527596034
 
-![Godzilla Trial](examples/godzilla_trial.png)
+### Interactive
+
+If the model is being used interactively (e.g. in a notebook) `generate_image_stream` can be used to generate a stream of images as the model is decoding.  The detokenizer adds a slight delay for each image.  Setting `log2_mid_count` to 3 results in a total of `2 ** 3 = 8` generated images.  The only valid values for `log2_mid_count` are 0, 1, 2, 3, and 4.  This is implemented in the colab.
+
+```python
+image_stream = model.generate_image_stream(
+    text='Dali painting of WALL·E',
+    seed=-1,
+    grid_size=3,
+    log2_mid_count=3,
+    log2_k=6,
+    log2_supercondition_factor=3,
+    is_verbose=False
+)
+
+for image in image_stream:
+    display(image)
+```
+<img src="https://github.com/kuprel/min-dalle/raw/main/examples/dali_walle_animated.gif" alt="min-dalle" width="300"/>
+
+### Command Line
+
+Use `image_from_text.py` to generate images from the command line.
+
+```bash
+$ python image_from_text.py --text='artificial intelligence' --no-mega
+```
+<img src="https://github.com/kuprel/min-dalle/raw/main/examples/artificial_intelligence.jpg" alt="min-dalle" width="200"/>
